@@ -1,6 +1,11 @@
 package ui;
 
+import dominio.Asistente;
+import dominio.Factura;
 import dominio.Reserva;
+import servicio.GestorAsistentes;
+import servicio.GestorPagos;
+import servicio.GestorPromociones;
 import servicio.GestorReservas;
 
 import javax.swing.*;
@@ -12,167 +17,260 @@ import java.time.format.DateTimeParseException;
 
 public class VentanaReservas extends JFrame {
     private final GestorReservas gestorReservas;
+    private final GestorAsistentes gestorAsistentes;
+    private final GestorPagos gestorPagos;
+    private final GestorPromociones gestorPromociones;
     private static final DateTimeFormatter FORMATO_FECHA = DateTimeFormatter.ISO_LOCAL_DATE;
 
-    private final DefaultTableModel modeloTabla;
-    private final JTable tabla;
+    private final DefaultTableModel modeloReservas;
+    private final JTable tablaReservas;
 
-    private final JTextField campoCodigoReservaSeleccionada = new JTextField(10);
-    private final JTextField campoCodigoAsistente = new JTextField(10);
-    private final JTextField campoCodigoSolicitud = new JTextField(10);
-    private final JTextField campoFechaEvento = new JTextField(10);
-    private final JTextField campoCantidadCupos = new JTextField(5);
-    private final JTextField campoObservaciones = new JTextField(20);
+    private final DefaultTableModel modeloAsistentes;
+    private final JTable tablaAsistentes;
 
-    public VentanaReservas(GestorReservas gestorReservas) {
+    private final JTextField campoObservaciones = new JTextField(25);
+    private final JTextField campoCodigoAsistenteAAgregar = new JTextField(10);
+
+    private String codigoReservaSeleccionada;
+
+    public VentanaReservas(GestorReservas gestorReservas, GestorAsistentes gestorAsistentes,
+                           GestorPagos gestorPagos, GestorPromociones gestorPromociones) {
         super("Gestión de Reservas");
         this.gestorReservas = gestorReservas;
+        this.gestorAsistentes = gestorAsistentes;
+        this.gestorPagos = gestorPagos;
+        this.gestorPromociones = gestorPromociones;
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        setSize(900, 480);
+        setSize(950, 650);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(10, 10));
 
-        modeloTabla = new DefaultTableModel(new Object[]{
-                "Código", "Asistente", "Fecha evento", "Estado", "Cupos", "Importe abonado"
+        modeloReservas = new DefaultTableModel(new Object[]{
+                "Código", "Cód. solicitud", "Fecha evento", "Estado", "Asistentes", "Importe abonado"
         }, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) { return false; }
+            @Override public boolean isCellEditable(int row, int column) { return false; }
         };
-        tabla = new JTable(modeloTabla);
-        tabla.getSelectionModel().addListSelectionListener(e -> cargarSeleccionEnFormulario());
-        add(new JScrollPane(tabla), BorderLayout.CENTER);
+        tablaReservas = new JTable(modeloReservas);
+        tablaReservas.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) cargarReservaSeleccionada();
+        });
 
-        add(construirPanelFormulario(), BorderLayout.SOUTH);
+        modeloAsistentes = new DefaultTableModel(new Object[]{"Código", "Nombre y apellido", "Email"}, 0) {
+            @Override public boolean isCellEditable(int row, int column) { return false; }
+        };
+        tablaAsistentes = new JTable(modeloAsistentes);
 
-        actualizarTabla();
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
+                new JScrollPane(tablaReservas), construirPanelDetalle());
+        splitPane.setResizeWeight(0.45);
+        add(splitPane, BorderLayout.CENTER);
+        add(construirPanelSuperior(), BorderLayout.NORTH);
+
+        actualizarTablaReservas();
     }
 
-    private JPanel construirPanelFormulario() {
-        JPanel panel = new JPanel(new GridBagLayout());
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(4, 4, 4, 4);
-        gbc.fill = GridBagConstraints.HORIZONTAL;
+    private JPanel construirPanelSuperior() {
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JButton botonNuevaReserva = new JButton("+ Nueva reserva");
+        botonNuevaReserva.addActionListener(e -> crearReserva());
 
-        gbc.gridx = 0; gbc.gridy = 0; panel.add(new JLabel("Código reserva (para modificar/cancelar):"), gbc);
-        gbc.gridx = 1; panel.add(campoCodigoReservaSeleccionada, gbc);
+        JButton botonGestionarAsistentes = new JButton("Gestionar asistentes (CU01, CU02, CU03)");
+        botonGestionarAsistentes.addActionListener(e -> new VentanaAsistentes(gestorAsistentes).setVisible(true));
 
-        gbc.gridx = 0; gbc.gridy = 1; panel.add(new JLabel("Código asistente:"), gbc);
-        gbc.gridx = 1; panel.add(campoCodigoAsistente, gbc);
-
-        gbc.gridx = 0; gbc.gridy = 2; panel.add(new JLabel("Código solicitud (del Grupo 1):"), gbc);
-        gbc.gridx = 1; panel.add(campoCodigoSolicitud, gbc);
-
-        gbc.gridx = 0; gbc.gridy = 3; panel.add(new JLabel("Fecha evento (aaaa-mm-dd):"), gbc);
-        gbc.gridx = 1; panel.add(campoFechaEvento, gbc);
-
-        gbc.gridx = 0; gbc.gridy = 4; panel.add(new JLabel("Cantidad de cupos:"), gbc);
-        gbc.gridx = 1; panel.add(campoCantidadCupos, gbc);
-
-        gbc.gridx = 0; gbc.gridy = 5; panel.add(new JLabel("Observaciones:"), gbc);
-        gbc.gridx = 1; panel.add(campoObservaciones, gbc);
-
-        JButton botonInscribir = new JButton("Inscribir (CU04)");
-        botonInscribir.addActionListener(e -> inscribir());
-
-        JButton botonModificar = new JButton("Modificar (CU05)");
-        botonModificar.addActionListener(e -> modificar());
-
-        JButton botonCancelar = new JButton("Cancelar (CU06)");
-        botonCancelar.addActionListener(e -> cancelar());
-
-        JPanel panelBotones = new JPanel();
-        panelBotones.add(botonInscribir);
-        panelBotones.add(botonModificar);
-        panelBotones.add(botonCancelar);
-
-        gbc.gridx = 0; gbc.gridy = 6; gbc.gridwidth = 2;
-        panel.add(panelBotones, gbc);
-
+        panel.add(botonNuevaReserva);
+        panel.add(botonGestionarAsistentes);
         return panel;
     }
 
-    private void inscribir() {
+    private JPanel construirPanelDetalle() {
+        JPanel panel = new JPanel(new BorderLayout(8, 8));
+        panel.setBorder(BorderFactory.createTitledBorder("Detalle de la reserva seleccionada"));
+
+        panel.add(new JScrollPane(tablaAsistentes), BorderLayout.CENTER);
+
+        JPanel panelAgregar = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        panelAgregar.add(new JLabel("Código asistente:"));
+        panelAgregar.add(campoCodigoAsistenteAAgregar);
+        JButton botonAgregar = new JButton("Agregar asistente (CU04)");
+        botonAgregar.addActionListener(e -> agregarAsistente());
+        JButton botonQuitar = new JButton("Quitar asistente seleccionado");
+        botonQuitar.addActionListener(e -> quitarAsistente());
+        panelAgregar.add(botonAgregar);
+        panelAgregar.add(botonQuitar);
+
+        JPanel panelObservaciones = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        panelObservaciones.add(new JLabel("Observaciones:"));
+        panelObservaciones.add(campoObservaciones);
+        JButton botonModificar = new JButton("Modificar (CU05)");
+        botonModificar.addActionListener(e -> modificarObservaciones());
+        panelObservaciones.add(botonModificar);
+
+        JPanel panelAcciones = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JButton botonPago = new JButton("Registrar pago (CU09 + CU10)");
+        botonPago.addActionListener(e -> abrirDialogoPago());
+        JButton botonCancelar = new JButton("Cancelar reserva (CU06)");
+        botonCancelar.addActionListener(e -> cancelarReserva());
+        panelAcciones.add(botonPago);
+        panelAcciones.add(botonCancelar);
+
+        JPanel panelInferior = new JPanel();
+        panelInferior.setLayout(new BoxLayout(panelInferior, BoxLayout.Y_AXIS));
+        panelInferior.add(panelAgregar);
+        panelInferior.add(panelObservaciones);
+        panelInferior.add(panelAcciones);
+
+        panel.add(panelInferior, BorderLayout.SOUTH);
+        return panel;
+    }
+
+    private void crearReserva() {
+        JTextField campoSolicitud = new JTextField();
+        JTextField campoFecha = new JTextField();
+        JTextField campoObs = new JTextField();
+        Object[] mensaje = {
+                "Código de solicitud (del Grupo 1):", campoSolicitud,
+                "Fecha del evento (aaaa-mm-dd):", campoFecha,
+                "Observaciones:", campoObs
+        };
+        int resultado = JOptionPane.showConfirmDialog(this, mensaje, "Nueva reserva", JOptionPane.OK_CANCEL_OPTION);
+        if (resultado != JOptionPane.OK_OPTION) return;
         try {
-            LocalDate fecha = parsearFecha(campoFechaEvento.getText());
-            int cupos = parsearCupos(campoCantidadCupos.getText());
-            gestorReservas.inscribir(campoCodigoAsistente.getText(), campoCodigoSolicitud.getText(),
-                    fecha, cupos, campoObservaciones.getText());
-            limpiarFormulario();
-            actualizarTabla();
-            JOptionPane.showMessageDialog(this, "Reserva creada en estado Pendiente de Pago.");
+            LocalDate fecha = LocalDate.parse(campoFecha.getText().trim(), FORMATO_FECHA);
+            gestorReservas.crear(campoSolicitud.getText().trim(), fecha, campoObs.getText().trim());
+            actualizarTablaReservas();
+        } catch (DateTimeParseException ex) {
+            mostrarError(new IllegalArgumentException("La fecha debe tener formato aaaa-mm-dd"));
         } catch (RuntimeException ex) {
             mostrarError(ex);
         }
     }
 
-    private void modificar() {
+    private void agregarAsistente() {
+        if (codigoReservaSeleccionada == null) { avisarSinSeleccion(); return; }
         try {
-            int cupos = parsearCupos(campoCantidadCupos.getText());
-            gestorReservas.modificar(campoCodigoReservaSeleccionada.getText(), cupos, campoObservaciones.getText());
-            actualizarTabla();
-            JOptionPane.showMessageDialog(this, "Reserva modificada.");
+            gestorReservas.agregarAsistente(codigoReservaSeleccionada, campoCodigoAsistenteAAgregar.getText().trim());
+            campoCodigoAsistenteAAgregar.setText("");
+            cargarReservaSeleccionada();
+            actualizarTablaReservas();
         } catch (RuntimeException ex) {
             mostrarError(ex);
         }
     }
 
-    private void cancelar() {
+    private void quitarAsistente() {
+        if (codigoReservaSeleccionada == null) { avisarSinSeleccion(); return; }
+        int fila = tablaAsistentes.getSelectedRow();
+        if (fila < 0) {
+            JOptionPane.showMessageDialog(this, "Seleccioná un asistente de la lista para quitar.");
+            return;
+        }
+        String codigoAsistente = (String) modeloAsistentes.getValueAt(fila, 0);
+        try {
+            gestorReservas.quitarAsistente(codigoReservaSeleccionada, codigoAsistente);
+            cargarReservaSeleccionada();
+            actualizarTablaReservas();
+        } catch (RuntimeException ex) {
+            mostrarError(ex);
+        }
+    }
+
+    private void modificarObservaciones() {
+        if (codigoReservaSeleccionada == null) { avisarSinSeleccion(); return; }
+        try {
+            gestorReservas.modificarObservaciones(codigoReservaSeleccionada, campoObservaciones.getText());
+            actualizarTablaReservas();
+            JOptionPane.showMessageDialog(this, "Observaciones actualizadas.");
+        } catch (RuntimeException ex) {
+            mostrarError(ex);
+        }
+    }
+
+    private void cancelarReserva() {
+        if (codigoReservaSeleccionada == null) { avisarSinSeleccion(); return; }
         String motivo = JOptionPane.showInputDialog(this, "Motivo de la cancelación:");
         if (motivo == null || motivo.isBlank()) return;
         try {
-            gestorReservas.cancelar(campoCodigoReservaSeleccionada.getText(), motivo);
-            actualizarTabla();
+            gestorReservas.cancelar(codigoReservaSeleccionada, motivo);
+            actualizarTablaReservas();
             JOptionPane.showMessageDialog(this, "Reserva cancelada.");
         } catch (RuntimeException ex) {
             mostrarError(ex);
         }
     }
 
-    private void cargarSeleccionEnFormulario() {
-        int fila = tabla.getSelectedRow();
-        if (fila < 0) return;
-        campoCodigoReservaSeleccionada.setText((String) modeloTabla.getValueAt(fila, 0));
-        campoFechaEvento.setText(modeloTabla.getValueAt(fila, 2).toString());
-        campoCantidadCupos.setText(modeloTabla.getValueAt(fila, 4).toString());
+    private void abrirDialogoPago() {
+        if (codigoReservaSeleccionada == null) { avisarSinSeleccion(); return; }
+
+        JTextField campoImporte = new JTextField();
+        JTextField campoMedioPago = new JTextField();
+        JComboBox<String> comboPromo = new JComboBox<>();
+        comboPromo.addItem("(sin promoción)");
+        gestorPromociones.listarTodas().forEach(p -> comboPromo.addItem(p.getCodigoPromocion() + " - " + p.getNombre()));
+
+        Object[] mensaje = {
+                "Importe total:", campoImporte,
+                "Medio de pago:", campoMedioPago,
+                "Promoción:", comboPromo
+        };
+        int resultado = JOptionPane.showConfirmDialog(this, mensaje, "Registrar pago", JOptionPane.OK_CANCEL_OPTION);
+        if (resultado != JOptionPane.OK_OPTION) return;
+
+        try {
+            double importe = Double.parseDouble(campoImporte.getText().trim());
+            String seleccionPromo = (String) comboPromo.getSelectedItem();
+            String codigoPromocion = (seleccionPromo == null || seleccionPromo.startsWith("("))
+                    ? null : seleccionPromo.split(" - ")[0];
+
+            Factura factura = gestorPagos.registrarPago(codigoReservaSeleccionada, importe,
+                    campoMedioPago.getText().trim(), codigoPromocion);
+
+            actualizarTablaReservas();
+            JOptionPane.showMessageDialog(this,
+                    "Pago registrado.\nFactura: " + factura.getCodigoFactura()
+                            + "\nImporte total: $" + factura.getImporteTotal()
+                            + "\nImporte final: $" + factura.getImporteFinal());
+        } catch (NumberFormatException ex) {
+            mostrarError(new IllegalArgumentException("El importe debe ser un número válido"));
+        } catch (RuntimeException ex) {
+            mostrarError(ex);
+        }
     }
 
-    private void limpiarFormulario() {
-        campoCodigoAsistente.setText("");
-        campoCodigoSolicitud.setText("");
-        campoFechaEvento.setText("");
-        campoCantidadCupos.setText("");
-        campoObservaciones.setText("");
+    private void cargarReservaSeleccionada() {
+        int fila = tablaReservas.getSelectedRow();
+        if (fila < 0) {
+            codigoReservaSeleccionada = null;
+            modeloAsistentes.setRowCount(0);
+            campoObservaciones.setText("");
+            return;
+        }
+        codigoReservaSeleccionada = (String) modeloReservas.getValueAt(fila, 0);
+        Reserva reserva = gestorReservas.obtener(codigoReservaSeleccionada);
+
+        campoObservaciones.setText(reserva.getObservaciones());
+
+        modeloAsistentes.setRowCount(0);
+        for (Asistente a : reserva.getAsistentes()) {
+            modeloAsistentes.addRow(new Object[]{a.getCodigoAsistente(), a.getNombreApellido(), a.getEmail()});
+        }
     }
 
-    private void actualizarTabla() {
-        modeloTabla.setRowCount(0);
+    private void actualizarTablaReservas() {
+        modeloReservas.setRowCount(0);
         for (Reserva r : gestorReservas.listarTodas()) {
-            modeloTabla.addRow(new Object[]{
-                    r.getCodigoReserva(),
-                    r.getAsistente().getNombreApellido(),
-                    r.getFechaEvento(),
-                    r.getEstado(),
-                    r.getCantidadCupos(),
-                    r.getImporteAbonado()
+            modeloReservas.addRow(new Object[]{
+                    r.getCodigoReserva(), r.getCodigoSolicitud(), r.getFechaEvento(),
+                    r.getEstado(), r.getCantidadCupos(), r.getImporteAbonado()
             });
         }
-    }
-
-    private LocalDate parsearFecha(String texto) {
-        try {
-            return LocalDate.parse(texto.trim(), FORMATO_FECHA);
-        } catch (DateTimeParseException ex) {
-            throw new IllegalArgumentException("La fecha debe tener formato aaaa-mm-dd");
+        if (codigoReservaSeleccionada != null) {
+            cargarReservaSeleccionada();
         }
     }
 
-    private int parsearCupos(String texto) {
-        try {
-            return Integer.parseInt(texto.trim());
-        } catch (NumberFormatException ex) {
-            throw new IllegalArgumentException("La cantidad de cupos debe ser un número entero");
-        }
+    private void avisarSinSeleccion() {
+        JOptionPane.showMessageDialog(this, "Primero seleccioná una reserva de la lista.");
     }
 
     private void mostrarError(RuntimeException ex) {

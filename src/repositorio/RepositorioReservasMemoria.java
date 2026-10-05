@@ -30,7 +30,8 @@ public class RepositorioReservasMemoria implements RepositorioReservas {
     @Override
     public List<Reserva> listarPorAsistente(String codigoAsistente) {
         return datos.values().stream()
-                .filter(r -> r.getAsistente().getCodigoAsistente().equals(codigoAsistente))
+                .filter(r -> r.getAsistentes().stream()
+                        .anyMatch(a -> a.getCodigoAsistente().equals(codigoAsistente)))
                 .collect(Collectors.toList());
     }
 }

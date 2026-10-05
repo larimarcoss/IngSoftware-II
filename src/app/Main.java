@@ -10,6 +10,7 @@ import repositorio.RepositorioPromocionesMemoria;
 import repositorio.RepositorioReservas;
 import repositorio.RepositorioReservasMemoria;
 import servicio.GestorAsistentes;
+import servicio.GestorCaja;
 import servicio.GestorPagos;
 import servicio.GestorPromociones;
 import servicio.GestorReservas;
@@ -32,6 +33,7 @@ public class Main {
         RepositorioFacturas repositorioFacturas = new RepositorioFacturasMemoria();
         Caja caja = new Caja(GeneradorCodigo.siguiente("CAJA"), 0);
         GestorPagos gestorPagos = new GestorPagos(gestorReservas, repositorioPromociones, repositorioFacturas, caja);
+        GestorCaja gestorCaja = new GestorCaja(caja); // misma Caja que usa GestorPagos
 
         // Datos de ejemplo para no arrancar con las tablas vacías
         gestorAsistentes.registrar("Marcos Torti", "marcos@mail.com", "1122334455");
@@ -39,7 +41,7 @@ public class Main {
 
         SwingUtilities.invokeLater(() -> {
             VentanaPrincipal ventanaPrincipal = new VentanaPrincipal(
-                    gestorAsistentes, gestorReservas, gestorPromociones, gestorPagos);
+                    gestorAsistentes, gestorReservas, gestorPromociones, gestorPagos, gestorCaja);
             ventanaPrincipal.setVisible(true);
         });
     }

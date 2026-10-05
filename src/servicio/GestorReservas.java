@@ -17,26 +17,33 @@ public class GestorReservas {
         this.gestorAsistentes = gestorAsistentes;
     }
 
-    // CU04: Inscribir asistente a evento
-    public Reserva inscribir(String codigoAsistente, String codigoSolicitud, LocalDate fechaEvento,
-                             int cantidadCupos, String observaciones) {
-        Asistente asistente = gestorAsistentes.obtener(codigoAsistente);
-        Reserva reserva = new Reserva(GeneradorCodigo.siguiente("RES"), asistente, codigoSolicitud,
-                fechaEvento, cantidadCupos, observaciones);
+    // Crea la reserva "vacía", asociada a una solicitud del Grupo 1
+    public Reserva crear(String codigoSolicitud, LocalDate fechaEvento, String observaciones) {
+        Reserva reserva = new Reserva(GeneradorCodigo.siguiente("RES"), codigoSolicitud, fechaEvento, observaciones);
         repositorio.guardar(reserva);
         return reserva;
     }
 
-    // CU05: Modificar reserva
-    public void modificar(String codigoReserva, int nuevaCantidadCupos, String nuevasObservaciones) {
+    // CU04: Inscribir asistente a evento (dentro de una reserva ya creada)
+    public void agregarAsistente(String codigoReserva, String codigoAsistente) {
         Reserva reserva = obtener(codigoReserva);
-        reserva.modificar(nuevaCantidadCupos, nuevasObservaciones);
+        Asistente asistente = gestorAsistentes.obtener(codigoAsistente);
+        reserva.agregarAsistente(asistente);
+    }
+
+    public void quitarAsistente(String codigoReserva, String codigoAsistente) {
+        Reserva reserva = obtener(codigoReserva);
+        reserva.quitarAsistente(codigoAsistente);
+    }
+
+    // CU05: Modificar reserva (las observaciones; los cupos se derivan de los asistentes cargados)
+    public void modificarObservaciones(String codigoReserva, String nuevasObservaciones) {
+        obtener(codigoReserva).modificarObservaciones(nuevasObservaciones);
     }
 
     // CU06: Cancelar reserva
     public void cancelar(String codigoReserva, String motivo) {
-        Reserva reserva = obtener(codigoReserva);
-        reserva.cancelar(motivo);
+        obtener(codigoReserva).cancelar(motivo);
     }
 
     public Reserva obtener(String codigoReserva) {
@@ -44,7 +51,7 @@ public class GestorReservas {
                 .orElseThrow(() -> new IllegalArgumentException("No existe una reserva con código " + codigoReserva));
     }
 
-    // CU17: Consultar estado de reservas (el filtrado por estado/asistente se hace en la ventana)
+    // CU17: Consultar estado de reservas
     public List<Reserva> listarTodas() {
         return repositorio.listarTodas();
     }
